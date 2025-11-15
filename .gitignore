@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Results and outputs
+analysis_results/
+results/
+saved_model/*.pth
+saved_model/*.pt
+
+# Dataset (too large for git)
+data/train/*.jpg
+data/valid/*.jpg
+data/test/*.jpg
+
+# Keep annotation files
+!data/train/_annotations.csv
+!data/valid/_annotations.csv
+!data/test/_annotations.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
