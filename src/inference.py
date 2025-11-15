@@ -1,5 +1,5 @@
 """
-Improved Inference & Evaluation Pipeline
+Inference & Evaluation Pipeline
 Features:
 1. Multi-scale inference
 2. Test-time augmentation (TTA)
@@ -28,7 +28,7 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 import datetime
 
-class ImprovedInference:
+class Inference:
     """Inference with multi-scale and TTA"""
     
     def __init__(self, rpn_model, feature_extractor, prototypes, 
@@ -439,7 +439,7 @@ def create_evaluation_report(metrics, per_class_metrics, output_dir):
 def main():
     """Main evaluation pipeline"""
     print("="*80)
-    print("IMPROVED INFERENCE & EVALUATION")
+    print("INFERENCE & EVALUATION")
     print("="*80)
     print("\nThis script provides the inference and evaluation framework")
     print("Implement data loading and model loading based on your setup")

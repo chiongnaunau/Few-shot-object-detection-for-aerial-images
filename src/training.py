@@ -1,5 +1,5 @@
 """
-Improved Few-Shot Object Detection Training Pipeline
+Few-Shot Object Detection Training Pipeline
 Implements multiple improvements over baseline:
 1. Multi-scale feature extraction
 2. Contrastive prototype learning
@@ -26,7 +26,7 @@ from tqdm import tqdm
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-class ImprovedFewShotDataset(Dataset):
+class FewShotDataset(Dataset):
     """Dataset with advanced augmentation for few-shot learning"""
     
     def __init__(self, csv_path, img_dir, classes, transform=None, is_support=False):
@@ -435,9 +435,9 @@ def train_prototypes(support_dataset, feature_extractor, num_classes,
             'model_state': prototype_learner.state_dict(),
             'num_classes': num_classes,
             'feature_dim': 1024
-        }, save_dir / 'improved_prototypes.pth')
+        }, save_dir / 'prototypes.pth')
         
-        print(f"\nSaved improved prototypes to {save_dir / 'improved_prototypes.pth'}")
+        print(f"\nSaved prototypes to {save_dir / 'prototypes.pth'}")
     
     return ensemble_prototypes, prototype_learner
 
@@ -456,7 +456,7 @@ def main():
     args = parser.parse_args()
     
     print("="*80)
-    print("IMPROVED FEW-SHOT OBJECT DETECTION TRAINING")
+    print("FEW-SHOT OBJECT DETECTION TRAINING")
     print("="*80)
     print(f"Device: {args.device}")
     print(f"K-shot: {args.k_shot}")
