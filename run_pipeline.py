@@ -66,7 +66,7 @@ def main():
     # Step 2: Training
     if not args.skip_training:
         run_command(
-            [sys.executable, 'src/improved_training.py',
+            [sys.executable, 'src/training.py',
              '--k_shot', str(args.k_shot),
              '--proto_epochs', str(args.proto_epochs),
              '--device', args.device],
@@ -77,7 +77,7 @@ def main():
     
     # Step 3: Inference and Evaluation
     run_command(
-        [sys.executable, 'src/improved_inference.py',
+        [sys.executable, 'src/inference.py',
          '--multi_scale',
          '--confidence', str(args.confidence)],
         "Step 3: Inference and Evaluation"

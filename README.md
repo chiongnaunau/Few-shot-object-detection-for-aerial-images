@@ -1,10 +1,10 @@
 # Few-Shot Object Detection for Aerial Images
 
-An improved implementation of few-shot object detection on the NWPU VHR-10 aerial imagery dataset.
+Implementation of few-shot object detection on the NWPU VHR-10 aerial imagery dataset.
 
 ## Overview
 
-This project implements a two-stage few-shot object detection approach with multiple improvements over baseline methods. The system achieves approximately 2x performance improvement (mAP@50: 1.9% to 3.7%) through key architectural and training enhancements.
+This project implements a two-stage few-shot object detection approach for detecting novel object classes in aerial imagery with limited training examples.
 
 ## Installation
 
@@ -49,7 +49,7 @@ Generates dataset statistics, class distributions, and few-shot support sets (5,
 python src/improved_training.py --k_shot 20 --proto_epochs 50 --device cuda
 ```
 
-Trains prototypes using contrastive learning with advanced data augmentation. Key parameters:
+Trains prototypes using contrastive learning and data augmentation. Key parameters:
 - `--k_shot`: Number of examples per novel class (default: 20)
 - `--proto_epochs`: Training epochs for prototypes (default: 50)
 - `--device`: cuda or cpu
@@ -69,61 +69,48 @@ Runs multi-scale inference and computes COCO evaluation metrics. Parameters:
 ### Architecture
 
 **Stage 1: Region Proposal Network**
-- COCO pretrained Faster R-CNN (key improvement over NWPU-trained RPN)
-- Generates high-quality object proposals
+- COCO pretrained Faster R-CNN for region proposals
+- Generates object proposal candidates
 
 **Stage 2: Prototype Classification**
 - DINOv2 ViT-L/14 feature extractor (frozen, 1024-dim features)
 - Learnable prototypes for novel classes
 - Temperature-scaled cosine similarity matching
 
-### Key Improvements
+### Key Components
 
-1. COCO Pretrained RPN
-   - Transfer learning from large-scale dataset
-   - Superior proposal quality compared to domain-specific training
+1. Region Proposal Network
+   - Pretrained Faster R-CNN from COCO dataset
+   - Generates high-quality region proposals
    
-2. Contrastive Prototype Learning
-   - Combined cross-entropy and contrastive loss
-   - Enhanced feature discrimination
+2. Prototype Learning
+   - Cross-entropy and contrastive loss combination
+   - Feature-based prototype matching
    
-3. Advanced Data Augmentation
-   - Albumentations pipeline with geometric and photometric transforms
-   - Random crops, rotations, color jittering, noise injection
+3. Data Augmentation
+   - Geometric transforms (crops, flips, rotations)
+   - Photometric transforms (color jittering, noise)
    
 4. Multi-Scale Inference
    - Testing at multiple scales (0.8x, 1.0x, 1.2x)
-   - Per-class non-maximum suppression
+   - Non-maximum suppression per class
    
 5. Prototype Ensembling
-   - Averaged prototypes from final 10 training epochs
-   - Improved stability and generalization
+   - Averaged prototypes from multiple training epochs
+   - Improved generalization
 
 ### Class Configuration
 
 - **Base classes** (7): ship, storage tank, basketball court, ground track field, harbor, bridge, vehicle
 - **Novel classes** (3): airplane, baseball diamond, tennis court
 
-## Expected Performance
-
-Performance on NWPU VHR-10 test set:
-
-| Approach | mAP@50 | Total Detections |
-|----------|--------|------------------|
-| Baseline (NWPU RPN) | 1.9% | 817 |
-| Improved (COCO RPN) | 3.7% | 1,060 |
-
-Per-class AP@50 for novel classes: airplane (3.7%), baseball diamond (2.4%), tennis court (1.0%).
-
-Note: Actual results may vary based on random initialization and support set selection.
-
 ## Project Structure
 
 ```
 src/
 ├── data_analysis.py         # Dataset analysis and support set generation
-├── improved_training.py     # Prototype training with improvements
-└── improved_inference.py    # Multi-scale inference and COCO evaluation
+├── training.py              # Prototype training implementation
+└── inference.py             # Multi-scale inference and evaluation
 
 data/                        # Dataset images and annotations
 saved_model/                 # Trained model checkpoints (generated)
