@@ -147,6 +147,31 @@ Photometric transforms:
 
 ## Performance Results
 
+### Sample Detection Visualizations
+
+Detection results on test set showing bounding boxes for novel classes:
+
+<div align="center">
+
+**Airplane Detection**
+
+<img src="results/result_046_jpg.rf.8e2173d059d60697f985c34cc697dd3f.jpg" width="400"/>
+<img src="results/result_369_jpg.rf.bd3b70fddee20d9bb6923bd056e025f1.jpg" width="400"/>
+
+**Baseball Diamond Detection**
+
+<img src="results/result_165_jpg.rf.bdbd7757e1bde1e2b87468b5b6f84b53.jpg" width="400"/>
+<img src="results/result_222_jpg.rf.6ada10673f9b82932263ff3d9424e028.jpg" width="400"/>
+
+**Tennis Court Detection**
+
+<img src="results/result_252_jpg.rf.fd2395bfe2b1235248436bca24e3775a.jpg" width="400"/>
+<img src="results/result_314_jpg.rf.1de71e5d20f7e35cf5984f4961df5285.jpg" width="400"/>
+
+</div>
+
+*Note: Green boxes indicate detected objects with confidence scores. The model shows varying performance across different classes.*
+
 ### Validation Set (86 images)
 
 **Overall Metrics** (30 epochs):
