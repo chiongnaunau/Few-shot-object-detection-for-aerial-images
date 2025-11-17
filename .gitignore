@@ -33,7 +33,7 @@ wheels/
 
 # Results and outputs
 analysis_results/
-results/
+
 saved_model/*.pth
 saved_model/*.pt
 
