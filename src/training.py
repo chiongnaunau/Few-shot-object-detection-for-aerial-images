@@ -80,8 +80,8 @@ class FewShotDataset(Dataset):
                 labels=labels.numpy() if len(labels) > 0 else []
             )
             image_np = transformed['image']
-            boxes = torch.as_tensor(transformed['bboxes'], dtype=torch.float32) if transformed['bboxes'] else torch.zeros((0, 4))
-            labels = torch.as_tensor(transformed['labels'], dtype=torch.int64) if transformed['labels'] else torch.zeros((0,))
+            boxes = torch.as_tensor(transformed['bboxes'], dtype=torch.float32) if len(transformed['bboxes']) > 0 else torch.zeros((0, 4))
+            labels = torch.as_tensor(transformed['labels'], dtype=torch.int64) if len(transformed['labels']) > 0 else torch.zeros((0,))
         
         # Convert to tensor if not already
         if not isinstance(image_np, torch.Tensor):
@@ -101,7 +101,7 @@ def get_augmentation_pipeline(is_train=True, image_size=400):
     """Get advanced augmentation pipeline"""
     if is_train:
         return A.Compose([
-            A.RandomResizedCrop(height=image_size, width=image_size, scale=(0.8, 1.0), p=0.5),
+            A.Resize(height=image_size, width=image_size),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.3),
             A.RandomRotate90(p=0.3),
@@ -110,7 +110,6 @@ def get_augmentation_pipeline(is_train=True, image_size=400):
                 A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=1),
                 A.RandomGamma(gamma_limit=(80, 120), p=1),
             ], p=0.5),
-            A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
             A.GaussianBlur(blur_limit=(3, 5), p=0.3),
             A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ToTensorV2()
@@ -309,7 +308,7 @@ def extract_roi_features(model, images, boxes, feature_extractor, device='cuda')
     return torch.stack(all_features), torch.stack(all_labels)
 
 def train_prototypes(support_dataset, feature_extractor, num_classes, 
-                     num_epochs=50, device='cuda', save_dir=None):
+                     num_epochs=50, device='cuda', save_dir=None, resume_checkpoint=None):
     """Train prototypes with contrastive learning"""
     print("\n" + "="*80)
     print("TRAINING PROTOTYPES (Contrastive Learning)")
@@ -330,19 +329,39 @@ def train_prototypes(support_dataset, feature_extractor, num_classes,
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     
+    # Resume from checkpoint if provided
+    start_epoch = 0
+    if resume_checkpoint:
+        print(f"\nResuming from checkpoint: {resume_checkpoint}")
+        checkpoint = torch.load(resume_checkpoint, map_location=device, weights_only=False)
+        
+        if 'model_state' in checkpoint:
+            prototype_learner.load_state_dict(checkpoint['model_state'])
+            print("  ✓ Loaded model state")
+        
+        if 'optimizer_state' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer_state'])
+            print("  ✓ Loaded optimizer state")
+        
+        if 'epoch' in checkpoint:
+            start_epoch = checkpoint['epoch']
+            print(f"  ✓ Resuming from epoch {start_epoch}")
+    
     # DataLoader
     data_loader = DataLoader(
         support_dataset,
         batch_size=8,
         shuffle=True,
-        num_workers=2,
+        num_workers=0,  # Use 0 on Windows to avoid multiprocessing issues
         collate_fn=lambda x: tuple(zip(*x))
     )
     
     # Training loop with ensemble collection
     best_prototypes = []
     
-    for epoch in range(num_epochs):
+    print(f"\nTraining from epoch {start_epoch+1} to {num_epochs}")
+    
+    for epoch in range(start_epoch, num_epochs):
         prototype_learner.train()
         epoch_loss = 0
         epoch_ce_loss = 0
@@ -418,6 +437,25 @@ def train_prototypes(support_dataset, feature_extractor, num_classes,
         
         print(f"Epoch {epoch+1}/{num_epochs} - Loss: {avg_loss:.4f}, CE: {avg_ce:.4f}, Contrastive: {avg_contr:.4f}")
         
+        # Save checkpoint after each epoch
+        if save_dir:
+            save_dir_path = Path(save_dir)
+            save_dir_path.mkdir(exist_ok=True, parents=True)
+            
+            checkpoint = {
+                'epoch': epoch + 1,
+                'prototypes': prototype_learner.prototypes.data.clone(),
+                'model_state': prototype_learner.state_dict(),
+                'num_classes': num_classes,
+                'feature_dim': 1024,
+                'optimizer_state': optimizer.state_dict(),
+                'loss': avg_loss
+            }
+            
+            # Save latest checkpoint
+            torch.save(checkpoint, save_dir_path / 'checkpoint_latest.pth')
+            print(f"  → Checkpoint saved to {save_dir_path / 'checkpoint_latest.pth'}")
+        
         # Save prototypes from last 10 epochs for ensemble
         if epoch >= num_epochs - 10:
             best_prototypes.append(prototype_learner.prototypes.data.clone())
@@ -446,37 +484,105 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='../data')
-    parser.add_argument('--output_dir', type=str, default='../saved_model')
+    parser.add_argument('--data_dir', type=str, default='data')
+    parser.add_argument('--output_dir', type=str, default='saved_models')
     parser.add_argument('--k_shot', type=int, default=20)
-    parser.add_argument('--base_epochs', type=int, default=25)
-    parser.add_argument('--proto_epochs', type=int, default=50)
+    parser.add_argument('--proto_epochs', type=int, default=30)
+    parser.add_argument('--resume', action='store_true', help='Resume from latest checkpoint')
+    parser.add_argument('--checkpoint', type=str, default=None, help='Path to specific checkpoint')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     
     args = parser.parse_args()
+    device = torch.device(args.device)
     
     print("="*80)
-    print("FEW-SHOT OBJECT DETECTION TRAINING")
+    print("FEW-SHOT OBJECT DETECTION TRAINING - IMPROVED VERSION")
     print("="*80)
-    print(f"Device: {args.device}")
+    print(f"Device: {device}")
     print(f"K-shot: {args.k_shot}")
-    print(f"Base epochs: {args.base_epochs}")
     print(f"Prototype epochs: {args.proto_epochs}")
+    print(f"Data directory: {args.data_dir}")
+    print(f"Output directory: {args.output_dir}")
+    
+    # Determine checkpoint to resume from
+    resume_checkpoint = None
+    if args.checkpoint:
+        resume_checkpoint = args.checkpoint
+        print(f"Resume: True (from {resume_checkpoint})")
+    elif args.resume:
+        latest_ckpt = Path(args.output_dir) / 'checkpoint_latest.pth'
+        if latest_ckpt.exists():
+            resume_checkpoint = str(latest_ckpt)
+            print(f"Resume: True (from {resume_checkpoint})")
+        else:
+            print("Resume: False (no checkpoint found)")
     
     # Define classes
     novel_classes = ['airplane', 'baseball diamond', 'tennis court']
-    base_classes = ['ship', 'storage tank', 'basketball court', 
-                    'ground track field', 'harbor', 'bridge', 'vehicle']
-    all_classes = base_classes + novel_classes
     
-    # Create datasets (this is a simplified version - you need to implement proper data loading)
-    print("\nNote: Implement proper dataset loading based on your data structure")
-    print("This script provides the training framework with improvements")
+    # Step 1: Load COCO pre-trained Faster R-CNN (for RPN)
+    print("\n" + "="*80)
+    print("LOADING COCO PRE-TRAINED MODEL FOR RPN")
+    print("="*80)
+    rpn_model = fasterrcnn_resnet50_fpn(pretrained=True)
+    rpn_model.to(device)
+    rpn_model.eval()
+    for param in rpn_model.parameters():
+        param.requires_grad = False
+    print("✓ COCO pre-trained model loaded successfully")
+    
+    # Step 2: Load DINOv2 feature extractor
+    print("\n" + "="*80)
+    print("LOADING DINOv2 FEATURE EXTRACTOR")
+    print("="*80)
+    feature_extractor = DINOv2FeatureExtractor(model_name='dinov2_vitl14', freeze=True)
+    feature_extractor.to(device)
+    print("✓ DINOv2 model loaded successfully")
+    
+    # Step 3: Prepare few-shot dataset
+    print("\n" + "="*80)
+    print(f"PREPARING {args.k_shot}-SHOT SUPPORT SET")
+    print("="*80)
+    
+    # Load training data CSV
+    train_csv = Path(args.data_dir) / 'train' / '_annotations.csv'
+    train_img_dir = Path(args.data_dir) / 'train'
+    
+    if not train_csv.exists():
+        raise FileNotFoundError(f"Training CSV not found: {train_csv}")
+    
+    # Create support dataset
+    augmentation = get_augmentation_pipeline(is_train=True, image_size=400)
+    support_dataset = FewShotDataset(
+        csv_path=train_csv,
+        img_dir=train_img_dir,
+        classes=novel_classes,
+        transform=augmentation,
+        is_support=True
+    )
+    
+    print(f"✓ Support dataset created with {len(support_dataset)} images")
+    
+    # Step 4: Train prototypes
+    print("\n" + "="*80)
+    print("TRAINING PROTOTYPES WITH CONTRASTIVE LEARNING")
+    print("="*80)
+    
+    ensemble_prototypes, prototype_learner = train_prototypes(
+        support_dataset=support_dataset,
+        feature_extractor=feature_extractor,
+        num_classes=len(novel_classes),
+        num_epochs=args.proto_epochs,
+        device=device,
+        save_dir=args.output_dir,
+        resume_checkpoint=resume_checkpoint
+    )
     
     print("\n" + "="*80)
-    print("TRAINING COMPLETE")
+    print("TRAINING COMPLETED SUCCESSFULLY!")
     print("="*80)
-    print(f"Models saved to: {args.output_dir}")
+    print(f"✓ Prototypes saved to: {args.output_dir}/prototypes.pth")
+    print(f"✓ Prototype shape: {ensemble_prototypes.shape}")
 
 if __name__ == '__main__':
     main()

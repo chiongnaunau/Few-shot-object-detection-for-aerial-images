@@ -10,6 +10,7 @@ Features:
 
 import torch
 import torch.nn.functional as F
+import torchvision
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 import torchvision.transforms as T
 
@@ -438,11 +439,143 @@ def create_evaluation_report(metrics, per_class_metrics, output_dir):
 
 def main():
     """Main evaluation pipeline"""
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_dir', type=str, default='data')
+    parser.add_argument('--model_path', type=str, default='saved_models/prototypes.pth')
+    parser.add_argument('--output_dir', type=str, default='results')
+    parser.add_argument('--num_visualize', type=int, default=10)
+    parser.add_argument('--calculate_metrics', action='store_true', help='Calculate COCO metrics')
+    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
+    
+    args = parser.parse_args()
+    device = torch.device(args.device)
+    
     print("="*80)
     print("INFERENCE & EVALUATION")
     print("="*80)
-    print("\nThis script provides the inference and evaluation framework")
-    print("Implement data loading and model loading based on your setup")
+    print(f"Device: {device}")
+    print(f"Model: {args.model_path}")
+    print(f"Output: {args.output_dir}")
+    
+    # Load model checkpoint
+    if not Path(args.model_path).exists():
+        print(f"\n❌ Model not found: {args.model_path}")
+        print("Please run training first or use a pre-trained model")
+        return
+    
+    checkpoint = torch.load(args.model_path, map_location=device)
+    prototypes = checkpoint['prototypes']
+    class_names = ['airplane', 'baseball diamond', 'tennis court']
+    
+    print(f"\n✓ Loaded prototypes: {prototypes.shape}")
+    print(f"✓ Classes: {class_names}")
+    
+    # Load RPN model (COCO pre-trained)
+    print("\nLoading RPN model...")
+    rpn_model = fasterrcnn_resnet50_fpn(pretrained=True)
+    rpn_model.to(device)
+    rpn_model.eval()
+    
+    # Load DINOv2
+    print("Loading DINOv2 feature extractor...")
+    feature_extractor = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
+    feature_extractor.to(device)
+    feature_extractor.eval()
+    
+    # Create inference engine
+    inference = Inference(
+        rpn_model=rpn_model,
+        feature_extractor=feature_extractor,
+        prototypes=prototypes,
+        class_names=class_names,
+        device=device
+    )
+    
+    # Load test dataset
+    test_csv = Path(args.data_dir) / 'test' / '_annotations.csv'
+    test_img_dir = Path(args.data_dir) / 'test'
+    
+    if not test_csv.exists():
+        print(f"\n❌ Test data not found: {test_csv}")
+        return
+    
+    test_df = pd.read_csv(test_csv)
+    test_images = test_df['filename'].unique()
+    
+    print(f"\n✓ Found {len(test_images)} test images")
+    
+    # Create output directory
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(exist_ok=True, parents=True)
+    
+    # Run inference on test set
+    print("\n" + "="*80)
+    print("RUNNING INFERENCE")
+    print("="*80)
+    
+    all_predictions = []
+    image_id_map = {}
+    
+    for idx, img_name in enumerate(tqdm(test_images[:args.num_visualize], desc="Processing images"), 1):
+        img_path = test_img_dir / img_name
+        if not img_path.exists():
+            continue
+        
+        # Load image
+        image = Image.open(img_path).convert('RGB')
+        image_tensor = T.ToTensor()(image)
+        
+        # Run inference
+        results = inference.multi_scale_inference(
+            image_tensor,
+            scales=[1.0],
+            confidence_threshold=0.3,
+            nms_threshold=0.5
+        )
+        
+        if results is None or len(results[0]) == 0:
+            boxes = torch.tensor([])
+            labels = torch.tensor([])
+            scores = torch.tensor([])
+        else:
+            boxes, labels, scores = results
+        
+        # Visualize
+        visualize_detections(
+            image_tensor,
+            boxes,
+            labels,
+            scores,
+            class_names,
+            save_path=output_dir / f'result_{img_name}',
+            gt_boxes=None,
+            gt_labels=None
+        )
+        
+        # Store predictions
+        image_id_map[img_name] = idx
+        all_predictions.append({
+            'image_name': img_name,
+            'image_id': idx,
+            'boxes': boxes.cpu().tolist() if len(boxes) > 0 else [],
+            'labels': labels.cpu().tolist() if len(labels) > 0 else [],
+            'scores': scores.cpu().tolist() if len(scores) > 0 else []
+        })
+    
+    # Save predictions to JSON
+    predictions_file = output_dir / 'predictions.json'
+    with open(predictions_file, 'w') as f:
+        json.dump(all_predictions, f, indent=2)
+    
+    print(f"\n✓ Processed {len(all_predictions)} images")
+    print(f"✓ Results saved to {output_dir}")
+    print(f"✓ Predictions saved to {predictions_file}")
+    
+    print("\n" + "="*80)
+    print("INFERENCE COMPLETE")
+    print("="*80)
     
 if __name__ == '__main__':
     main()
